@@ -12,7 +12,9 @@ type fog_of_war struct {
 }
 
 const uncovered_mask uint8 = 0b0000_0001
+const covered_mask uint8 = '#'
 const marked_mask uint8 = '?'
+const mine_mask uint8 = '!'
 
 func create_fow(board board) fog_of_war {
 	return fog_of_war{
@@ -46,10 +48,12 @@ func (fow *fog_of_war) byte_metadata() []byte {
 }
 
 func (fow *fog_of_war) val_to_byte(val uint8, idx int) byte {
-	if val^uncovered_mask == 0 {
+	if val == uncovered_mask {
 		return fow.board.fields[idx]
-	} else if val^marked_mask == 0 {
-		return '?'
+	} else if val == marked_mask {
+		return marked_mask
+	} else if val == mine_mask {
+		return mine_mask
 	} else {
 		return '#'
 	}
@@ -76,17 +80,20 @@ func (fow *fog_of_war) mark(idx uint) (idx_val, error) {
 	if fow.fog[idx] == uncovered_mask {
 		return idx_val{idx, fow.board.fields[idx]}, nil
 	}
-	if fow.fog[idx]&marked_mask > 0 {
-		fow.fog[idx] = fow.fog[idx] &^ marked_mask
+	if fow.fog[idx] == marked_mask {
+		fow.fog[idx] = 0
+	} else if fow.fog[idx] == mine_mask {
+		// noop
 	} else {
-		fow.fog[idx] |= marked_mask
+		fow.fog[idx] = marked_mask
 	}
 	return idx_val{idx, fow.val_to_byte(fow.fog[idx], int(idx))}, nil
 }
 
 func (fow *fog_of_war) uncover(idx uint) ([]idx_val, error) {
 	if is_bomb(fow.board.fields[idx]) {
-		return []idx_val{{idx, bomb_mask}}, errors.New("Bomb")
+		fow.fog[idx] = mine_mask
+		return []idx_val{{idx, mine_mask}}, errors.New("Bomb")
 	}
 	return fow._queueUncover(idx), nil
 }
@@ -125,13 +132,13 @@ func check_field(fow *fog_of_war, idx uint, options *[]uint) (bool, uint) {
 	if idx >= uint(len(fow.fog)) {
 		return false, idx
 	}
-	if fow.fog[idx]^marked_mask == 0 {
+	if fow.fog[idx] == marked_mask {
 		return false, idx
 	}
 	if is_bomb(fow.board.fields[idx]) {
 		return false, idx
 	}
-	if fow.fog[idx]^uncovered_mask == 0 {
+	if fow.fog[idx] == uncovered_mask {
 		return false, idx
 	}
 	fow.fog[idx] = uncovered_mask

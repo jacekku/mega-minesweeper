@@ -1,97 +1,157 @@
 <!-- websockets.html -->
 
-<input id="input" type="text" />
-<button onclick="send()">Send</button>
-<pre style="font-family: monospace" id="map"></pre>
-<div id="map_div"></div>
-<pre id="output"></pre>
+<canvas id="test_canvas"></canvas>
+<img src="assets/flag.png" hidden />
+<img src="assets/bomb.png" hidden />
+<div id="map">
+  <canvas id="map_canvas"></canvas>
+  <canvas id="interaction_canvas"></canvas>
+</div>
 
 <style>
-  .field {
-    width: 20px;
-    height: 20px;
-    text-align: center;
-    vertical-align: middle;
-    /* border: 1px solid black; */
+  #map {
+    position: relative;
   }
-  #map_div {
-    display: grid;
-    grid-template-columns: repeat(100, 20px);
-    grid-column-gap: 0px;
-    grid-row-gap: 0px;
+  #map canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
   }
 </style>
-<script>
-  var input = document.getElementById("input");
-  var output = document.getElementById("output");
-  var map = document.getElementById("map");
-  var mapDiv = document.getElementById("map_div");
-  var socket = new WebSocket("ws://localhost:8080/echo");
+<script defer async>
+  const FLAG = 63;
+  const BOMB = 33;
+  const COVERED = 35;
+  const EMPTY = 0;
+  const fieldSize = 20;
+  const IMAGES = [];
+  {
+    // prepare text images
+    const offscreen = new OffscreenCanvas(fieldSize, fieldSize);
+    const oContext = offscreen.getContext("2d");
+    oContext.fillStyle = "black";
+    oContext.font = `${fieldSize}px consolas`;
+    oContext.textAlign = "center";
+    oContext.textBaseline = "middle";
+    const test = document.getElementById("test_canvas");
+    /**
+     * @type {CanvasRenderingContext2D}
+     */
+    const ctx = test.getContext("2d");
+    for (let i = 0; i < 10; i++) {
+      oContext.fillText(i, fieldSize / 2, fieldSize / 2);
+      const bmp = offscreen.transferToImageBitmap();
+      ctx.drawImage(bmp, i * fieldSize, 0);
+      IMAGES[i] = bmp;
+    }
+    {
+      const flag = new Image();
+      flag.src = "./assets/flag.png";
+      ctx.drawImage(flag, 0, fieldSize);
+      IMAGES[FLAG] = flag;
+    }
+    {
+      const bomb = new Image();
+      bomb.src = "./assets/bomb.png";
+      ctx.drawImage(bomb, fieldSize, fieldSize);
+      IMAGES[BOMB] = bomb;
+    }
+    {
+      oContext.fillStyle = "darkgreen";
+      oContext.fillRect(0, 0, fieldSize, fieldSize);
+      const empty = offscreen.transferToImageBitmap();
+      ctx.drawImage(empty, 2 * fieldSize, fieldSize);
+      IMAGES[COVERED] = empty;
+    }
+  }
 
-  var MAP_ARR = new Uint8Array();
+  const MOUSE = {
+    rawX: 0,
+    rawY: 0,
+    canvasX: 0,
+    canvasY: 0,
+    fieldX: 0,
+    fieldY: 0,
+  };
+  const input = document.getElementById("input");
+  const output = document.getElementById("output");
+  const map_canvas = document.getElementById("map_canvas");
+  const interaction_canvas = document.getElementById("interaction_canvas");
+  interaction_canvas.addEventListener("mousemove", (e) => {
+    e.preventDefault();
+    MOUSE.rawX = e.offsetX;
+    MOUSE.rawY = e.offsetY;
+    MOUSE.canvasX =
+      Math.round((MOUSE.rawX - fieldSize / 2) / fieldSize) * fieldSize;
+    MOUSE.canvasY =
+      Math.round((MOUSE.rawY - fieldSize / 2) / fieldSize) * fieldSize;
+    MOUSE.fieldX = MOUSE.canvasX / fieldSize;
+    MOUSE.fieldY = MOUSE.canvasY / fieldSize;
+  });
+  interaction_canvas.addEventListener("click", (e) => {
+    e.preventDefault();
+    const idx = MOUSE.fieldX + mapMetadata.width * MOUSE.fieldY;
+    sendUncover(idx);
+  });
+  interaction_canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const idx = MOUSE.fieldX + mapMetadata.width * MOUSE.fieldY;
+    sendMark(idx);
+  });
+  /**
+   * @type {CanvasRenderingContext2D}
+   */
+  let mapContext;
+  /**
+   * @type {CanvasRenderingContext2D}
+   */
+  let interactionContext;
+  mapContext = map_canvas.getContext("2d");
+  mapContext.textAlign = "center";
+  mapContext.textBaseline = "middle";
+  interactionContext = interaction_canvas.getContext("2d");
+
+  let MAP_ARR = new Uint8Array();
 
   const mapMetadata = {
     width: 0,
     height: 0,
   };
 
-  socket.binaryType = "arraybuffer";
-  socket.onopen = function () {
-    output.innerHTML += "Status: Connected\n";
-  };
-
-  function byteToString(byte) {
-    if (byte == 0) return " ";
-    if (byte == 35) return "#";
-    if (byte == 63) return "?";
-    if (byte == 128) return "!";
-    return byte;
-  }
-
   function byteToStyle(byte) {
-    if (byte == 0) return "grey";
-    if (byte == 35) return "darkgreen";
-    if (byte == 63) return "blue";
-    if (byte == 128) return "red";
+    if (byte == EMPTY) return "grey";
+    if (byte == COVERED) return "darkgreen";
+    if (byte == FLAG) return "darkgreen";
+    if (byte == BOMB) return "red";
     return "yellow";
   }
 
-  socket.onmessage = async function (e) {
+  const socket = new WebSocket("ws://localhost:8080/echo");
+
+  socket.binaryType = "arraybuffer";
+  socket.onopen = function () {};
+
+  socket.onmessage = async function (event) {
     if (event.data[0] == "w") {
       const data = event.data.split(":");
       mapMetadata.width = Number(data[1]);
       mapMetadata.height = Number(data[2]);
-      MAP_ARR = new Uint8Array(mapMetadata.width * mapMetadata.height);
-      mapDiv.innerHTML = "";
-      mapDiv.style.gridTemplateColumns = `repeat(${mapMetadata.width}, 20px)`;
-      const promises = Array.from({
-        length: mapMetadata.width * mapMetadata.height,
-      }).map((_, i) => {
-        return new Promise(() => {
-          const field = document.createElement("div");
-          field.classList.add("field");
-          field.style.backgroundColor = "darkgreen";
-          field.addEventListener("click", (ev) => {
-            sendUncover(ev.target.id);
-          });
-          field.addEventListener("contextmenu", (ev) => {
-            ev.preventDefault();
-            sendMark(ev.target.id);
-          });
-          mapDiv.appendChild(field);
-        });
-      });
-      mapDiv.childNodes.forEach((node, i) => {
-        node.id = i;
-      });
+      const { width, height } = mapMetadata;
+      map_canvas.width = width * fieldSize;
+      map_canvas.height = height * fieldSize;
+      interaction_canvas.width = width * fieldSize;
+      interaction_canvas.height = height * fieldSize;
+
+      MAP_ARR = new Uint8Array(width * height);
     } else if (event.data instanceof ArrayBuffer) {
-      const view = new DataView(e.data);
+      const view = new DataView(event.data);
       // console.log(view.getUint8(0))
       // console.log(view.byteLength)
       if (view.getUint8(0) == 109) {
         const arr = new Uint8Array(view.buffer.slice(1));
         arr.forEach((v, i) => (MAP_ARR[i] = v));
-        redraw();
+        drawOriginalMap();
+        interactionDraw();
       } else if (view.getInt8(0) == 117) {
         const changes = new BigUint64Array(view.buffer.slice(1));
         const toUpdate = [];
@@ -106,30 +166,50 @@
     }
   };
 
-  function redraw(toUpdate) {
-    if (toUpdate) {
-      toUpdate.forEach(async (i) => {
-        mapDiv.children[i].innerHTML = byteToString(MAP_ARR[i]);
-        mapDiv.children[i].style.backgroundColor = byteToStyle(MAP_ARR[i]);
-      });
-      return;
+  function drawOriginalMap() {
+    for (let y = 0; y < mapMetadata.height; y++) {
+      for (let x = 0; x < mapMetadata.width; x++) {
+        const byte = MAP_ARR[x + mapMetadata.width * y];
+        mapContext.fillStyle = byteToStyle(byte);
+        mapContext.fillRect(x * fieldSize, y * fieldSize, fieldSize, fieldSize);
+
+        if (byte > 0)
+          mapContext.drawImage(IMAGES[byte], x * fieldSize, y * fieldSize);
+      }
     }
-    let draw = "";
-    for (let i = 0; i < MAP_ARR.byteLength; i++) {
-      const byte = MAP_ARR[i];
-      if (i > 0 && i % mapMetadata.width == 0) draw += "\n";
-      draw += byteToString(byte);
-    }
-    mapDiv.childNodes.forEach(async (node) => {
-      node.innerHTML = byteToString(MAP_ARR[node.id]);
-      node.style.backgroundColor = byteToStyle(MAP_ARR[node.id]);
-    });
-    // map.innerHTML = draw;
   }
 
-  function send() {
-    socket.send(input.value);
-    input.value = "";
+  /**
+   * @param {number[]} toUpdate
+   */
+  function redraw(toUpdate) {
+    toUpdate.forEach((idx) => {
+      const byte = MAP_ARR[idx];
+      const x = idx % mapMetadata.width;
+      const y = Math.round(idx / mapMetadata.height);
+      mapContext.fillStyle = byteToStyle(byte);
+      mapContext.fillRect(x * fieldSize, y * fieldSize, fieldSize, fieldSize);
+
+      if (byte > 0)
+        mapContext.drawImage(IMAGES[byte], x * fieldSize, y * fieldSize);
+    });
+  }
+
+  function interactionDraw() {
+    interactionContext.clearRect(
+      0,
+      0,
+      interaction_canvas.width,
+      interaction_canvas.height
+    );
+    interactionContext.fillStyle = "red";
+    interactionContext.fillRect(
+      MOUSE.canvasX,
+      MOUSE.canvasY,
+      fieldSize,
+      fieldSize
+    );
+    requestAnimationFrame(interactionDraw);
   }
 
   function sendUncover(idx) {

@@ -236,6 +236,27 @@ func TestCannotMarkUncoveredField(t *testing.T) {
 	}
 }
 
+func TestUncoveredMineCannotBeMarked(t *testing.T) {
+	var fow = generate_fow(1, 1, [][]uint{{0, 0}})
+	fow.uncover(0)
+	if fow.fog[0] != mine_mask {
+		t.Errorf("field should be mine")
+	}
+	fow.mark(0)
+	if fow.fog[0] == marked_mask {
+		t.Errorf("uncovered mine cannot be marked")
+	}
+}
+
+func TestUncoveredMineIsReturnedInByteArray(t *testing.T) {
+	var fow = generate_fow(1, 1, [][]uint{{0, 0}})
+	fow.uncover(0)
+	var bytes = fow.byte_array()
+	if bytes[0] != mine_mask {
+		t.Errorf("uncovered bombs should be returned in byte array")
+	}
+}
+
 func BenchmarkFowUncover(b *testing.B) {
 	var brd = create_board(3000, 3000)
 	for i := 0; i < b.N; i++ {

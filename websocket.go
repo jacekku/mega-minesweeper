@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -73,7 +74,7 @@ func markWithChannel(idx uint, fow *fog_of_war, updated_fields chan []idx_val) {
 func main() {
 	var clients []*websocket.Conn = make([]*websocket.Conn, 0)
 
-	var brd = create_board(10, 15)
+	var brd = create_board(200, 200)
 	fmt.Println("generated board")
 	for i := 0; i < int(float64(brd.height*brd.width)*0.1); i++ {
 		brd.set_bomb(uint(rand.Intn(int(brd.width))), uint(rand.Intn(int(brd.height))))
@@ -142,6 +143,11 @@ func main() {
 		}
 	})
 
+	http.HandleFunc("/assets/", func(w http.ResponseWriter, r *http.Request) {
+		var fileName = r.URL.Path
+		fileName = strings.Split(fileName, "/")[2]
+		http.ServeFile(w, r, "./assets/"+fileName)
+	})
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "websockets.html")
 	})
