@@ -2,6 +2,8 @@
 
 <img src="assets/flag.png" hidden />
 <img src="assets/bomb.png" hidden />
+<img src="assets/you.png" hidden />
+<img src="assets/other.png" hidden />
 <div id="map">
   <canvas id="map_canvas"></canvas>
   <canvas id="interaction_canvas"></canvas>
@@ -22,7 +24,9 @@
   const BOMB = 33;
   const COVERED = 35;
   const EMPTY = 0;
-  const fieldSize = 20;
+  const YOUR_PLAYER = 9999;
+  const OTHER_PLAYERS = 8888;
+  const fieldSize = 30;
   const IMAGES = [];
   {
     // prepare text images
@@ -46,6 +50,16 @@
       const bomb = new Image();
       bomb.src = "./assets/bomb.png";
       IMAGES[BOMB] = bomb;
+    }
+    {
+      const yourPlayer = new Image();
+      yourPlayer.src = "./assets/you.png";
+      IMAGES[YOUR_PLAYER] = yourPlayer;
+    }
+    {
+      const otherPlayers = new Image();
+      otherPlayers.src = "./assets/other.png";
+      IMAGES[OTHER_PLAYERS] = otherPlayers;
     }
     {
       oContext.fillStyle = "darkgreen";
@@ -86,9 +100,9 @@
   interaction_canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     const idx = MOUSE.fieldX + mapMetadata.width * MOUSE.fieldY;
-    console.table(MOUSE);
     sendMark(idx);
   });
+
   /**
    * @type {CanvasRenderingContext2D}
    */
@@ -136,8 +150,6 @@
       MAP_ARR = new Uint8Array(width * height);
     } else if (event.data instanceof ArrayBuffer) {
       const view = new DataView(event.data);
-      // console.log(view.getUint8(0))
-      // console.log(view.byteLength)
       if (view.getUint8(0) == 109) {
         const arr = new Uint8Array(view.buffer.slice(1));
         arr.forEach((v, i) => (MAP_ARR[i] = v));
@@ -152,6 +164,11 @@
         }
         redraw(toUpdate);
       }
+      // else if (view.getUint8(0) == 112) {
+      //   const newPositions = new BigUint64Array(view.buffer.slice(1));
+
+      //   interactionDraw(Array.from(newPositions, (i) => Number(i)));
+      // }
     } else {
       output.innerHTML += "Server: " + e.data + "\n";
     }
@@ -165,16 +182,22 @@
         mapContext.fillRect(x * fieldSize, y * fieldSize, fieldSize, fieldSize);
 
         if (byte > 0)
-          mapContext.drawImage(IMAGES[byte], x * fieldSize, y * fieldSize);
+          mapContext.drawImage(
+            IMAGES[byte],
+            x * fieldSize,
+            y * fieldSize,
+            fieldSize,
+            fieldSize
+          );
       }
     }
   }
 
   /**
    * @param {number[]} toUpdate
+
    */
   function redraw(toUpdate) {
-    console.table(toUpdate);
     toUpdate.forEach((idx) => {
       const byte = MAP_ARR[idx];
       const x = Math.floor(idx % mapMetadata.width);
@@ -183,24 +206,46 @@
       mapContext.fillRect(x * fieldSize, y * fieldSize, fieldSize, fieldSize);
 
       if (byte > 0)
-        mapContext.drawImage(IMAGES[byte], x * fieldSize, y * fieldSize);
+        mapContext.drawImage(
+          IMAGES[byte],
+          x * fieldSize,
+          y * fieldSize,
+          fieldSize,
+          fieldSize
+        );
     });
   }
 
-  function interactionDraw() {
+  /**
+   * @param {number[]} positions
+   */
+  function interactionDraw(positions) {
     interactionContext.clearRect(
       0,
       0,
       interaction_canvas.width,
       interaction_canvas.height
     );
-    interactionContext.fillStyle = "red";
-    interactionContext.fillRect(
+
+    interactionContext.drawImage(
+      IMAGES[YOUR_PLAYER],
       MOUSE.canvasX,
       MOUSE.canvasY,
       fieldSize,
       fieldSize
     );
+    // if (!positions) return;
+    // positions.forEach((idx) => {
+    //   const x = Math.floor(idx % mapMetadata.width);
+    //   const y = Math.floor(idx / mapMetadata.height);
+    //   mapContext.drawImage(
+    //     IMAGES[OTHER_PLAYERS],
+    //     x * fieldSize,
+    //     y * fieldSize,
+    //     fieldSize,
+    //     fieldSize
+    //   );
+    // });
     requestAnimationFrame(interactionDraw);
   }
 
@@ -211,4 +256,10 @@
   function sendMark(idx) {
     socket.send("m" + idx);
   }
+  // periodically send your player cursor position to server
+  // const CURSOR_UPDATE_INTERVAL = 1000;
+  // setInterval(() => {
+  //   const idx = MOUSE.fieldX + MOUSE.fieldY * mapMetadata.width;
+  //   socket.send("p" + idx);
+  // }, CURSOR_UPDATE_INTERVAL);
 </script>

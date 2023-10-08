@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -17,16 +16,15 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-var whole_request = time.Now()
-
 const whole_map_header byte = 'm'
 const uncover_header byte = 'u'
+const position_header byte = 'p'
 
 func update_board(clients *[]*websocket.Conn, fields chan []idx_val) {
 	for {
 		select {
 		case vals := <-fields:
-			start := time.Now()
+			// start := time.Now()
 			var msg []byte = make([]byte, 0)
 			msg = append(msg, uncover_header)
 			for _, i_v := range vals {
@@ -35,16 +33,16 @@ func update_board(clients *[]*websocket.Conn, fields chan []idx_val) {
 			}
 			// fmt.Println(msg)
 			// fmt.Println(len(*clients))
-			fmt.Println(time.Since(start), "create")
+			// fmt.Println(time.Since(start), "create")
 			broadcast(*clients, websocket.BinaryMessage, msg)
-			fmt.Println(time.Since(start), "create and broadcast")
-			fmt.Println(time.Since(whole_request), "whole request")
+			// fmt.Println(time.Since(start), "create and broadcast")
+			// fmt.Println(time.Since(whole_request), "whole request")
 		}
 	}
 }
 
 func broadcast(clients []*websocket.Conn, msgType int, msg []byte) {
-	start := time.Now()
+	// start := time.Now()
 	for idx := len(clients) - 1; idx >= 0; idx-- {
 		c := clients[idx]
 		if err := c.WriteMessage(msgType, msg); err != nil {
@@ -55,7 +53,7 @@ func broadcast(clients []*websocket.Conn, msgType int, msg []byte) {
 			continue
 		}
 	}
-	fmt.Println(time.Since(start), "broadcast")
+	// fmt.Println(time.Since(start), "broadcast")
 }
 
 func uncoverWithChannel(idx uint, fow *fog_of_war, updated_fields chan []idx_val) {
@@ -69,6 +67,14 @@ func markWithChannel(idx uint, fow *fog_of_war, updated_fields chan []idx_val) {
 		return
 	}
 	updated_fields <- []idx_val{value}
+}
+
+func updatePositions(clients []*websocket.Conn, idx uint) {
+	var msg []byte = make([]byte, 0)
+	msg = append(msg, position_header)
+	msg = binary.LittleEndian.AppendUint64(msg, uint64(idx))
+
+	broadcast(clients, websocket.BinaryMessage, msg)
 }
 
 func main() {
@@ -120,9 +126,10 @@ func main() {
 			// fmt.Printf("%s sent: %s\n", client.RemoteAddr(), string(msg))
 
 			// Write message back to browser
-			whole_request = time.Now()
-			start := time.Now()
+			// whole_request = time.Now()
+			// start := time.Now()
 			if msg[0] == 'u' {
+				// uncover
 				var s_idx = string(msg[1:])
 				var idx, err = strconv.ParseUint(s_idx, 10, 32)
 				if err != nil {
@@ -131,6 +138,7 @@ func main() {
 				}
 				uncoverWithChannel(uint(idx), &fow, updated_fields)
 			} else if msg[0] == 'm' {
+				// mark
 				var s_idx = string(msg[1:])
 				var idx, err = strconv.ParseUint(s_idx, 10, 32)
 				if err != nil {
@@ -138,8 +146,17 @@ func main() {
 					continue
 				}
 				markWithChannel(uint(idx), &fow, updated_fields)
+			} else if msg[0] == 'p' {
+				// update position
+				var s_idx = string(msg[1:])
+				var idx, err = strconv.ParseUint(s_idx, 10, 32)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				updatePositions(clients, uint(idx))
 			}
-			fmt.Println(time.Since(start), "handle client command")
+			// fmt.Println(time.Since(start), "handle client command")
 		}
 	})
 
@@ -150,6 +167,11 @@ func main() {
 	})
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "websockets.html")
+	})
+
+	http.HandleFunc("/admin/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println(r.Body)
+		fmt.Println(r.Method)
 	})
 
 	fmt.Println("listening on port 8080")
