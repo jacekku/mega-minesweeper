@@ -1,6 +1,5 @@
 <!-- websockets.html -->
 
-<canvas id="test_canvas"></canvas>
 <img src="assets/flag.png" hidden />
 <img src="assets/bomb.png" hidden />
 <div id="map">
@@ -33,34 +32,25 @@
     oContext.font = `${fieldSize}px consolas`;
     oContext.textAlign = "center";
     oContext.textBaseline = "middle";
-    const test = document.getElementById("test_canvas");
-    /**
-     * @type {CanvasRenderingContext2D}
-     */
-    const ctx = test.getContext("2d");
     for (let i = 0; i < 10; i++) {
       oContext.fillText(i, fieldSize / 2, fieldSize / 2);
       const bmp = offscreen.transferToImageBitmap();
-      ctx.drawImage(bmp, i * fieldSize, 0);
       IMAGES[i] = bmp;
     }
     {
       const flag = new Image();
       flag.src = "./assets/flag.png";
-      ctx.drawImage(flag, 0, fieldSize);
       IMAGES[FLAG] = flag;
     }
     {
       const bomb = new Image();
       bomb.src = "./assets/bomb.png";
-      ctx.drawImage(bomb, fieldSize, fieldSize);
       IMAGES[BOMB] = bomb;
     }
     {
       oContext.fillStyle = "darkgreen";
       oContext.fillRect(0, 0, fieldSize, fieldSize);
       const empty = offscreen.transferToImageBitmap();
-      ctx.drawImage(empty, 2 * fieldSize, fieldSize);
       IMAGES[COVERED] = empty;
     }
   }
@@ -85,8 +75,8 @@
       Math.round((MOUSE.rawX - fieldSize / 2) / fieldSize) * fieldSize;
     MOUSE.canvasY =
       Math.round((MOUSE.rawY - fieldSize / 2) / fieldSize) * fieldSize;
-    MOUSE.fieldX = MOUSE.canvasX / fieldSize;
-    MOUSE.fieldY = MOUSE.canvasY / fieldSize;
+    MOUSE.fieldX = Math.round(MOUSE.canvasX / fieldSize);
+    MOUSE.fieldY = Math.round(MOUSE.canvasY / fieldSize);
   });
   interaction_canvas.addEventListener("click", (e) => {
     e.preventDefault();
@@ -96,6 +86,7 @@
   interaction_canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     const idx = MOUSE.fieldX + mapMetadata.width * MOUSE.fieldY;
+    console.table(MOUSE);
     sendMark(idx);
   });
   /**
@@ -183,10 +174,11 @@
    * @param {number[]} toUpdate
    */
   function redraw(toUpdate) {
+    console.table(toUpdate);
     toUpdate.forEach((idx) => {
       const byte = MAP_ARR[idx];
-      const x = idx % mapMetadata.width;
-      const y = Math.round(idx / mapMetadata.height);
+      const x = Math.floor(idx % mapMetadata.width);
+      const y = Math.floor(idx / mapMetadata.height);
       mapContext.fillStyle = byteToStyle(byte);
       mapContext.fillRect(x * fieldSize, y * fieldSize, fieldSize, fieldSize);
 

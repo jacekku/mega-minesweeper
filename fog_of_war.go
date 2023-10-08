@@ -80,10 +80,10 @@ func (fow *fog_of_war) mark(idx uint) (idx_val, error) {
 	if fow.fog[idx] == uncovered_mask {
 		return idx_val{idx, fow.board.fields[idx]}, nil
 	}
-	if fow.fog[idx] == marked_mask {
-		fow.fog[idx] = 0
-	} else if fow.fog[idx] == mine_mask {
+	if fow.fog[idx] == mine_mask {
 		// noop
+	} else if fow.fog[idx] == marked_mask {
+		fow.fog[idx] = 0
 	} else {
 		fow.fog[idx] = marked_mask
 	}
@@ -91,6 +91,9 @@ func (fow *fog_of_war) mark(idx uint) (idx_val, error) {
 }
 
 func (fow *fog_of_war) uncover(idx uint) ([]idx_val, error) {
+	if fow.fog[idx] == marked_mask {
+		return []idx_val{{idx, marked_mask}}, errors.New("Marked")
+	}
 	if is_bomb(fow.board.fields[idx]) {
 		fow.fog[idx] = mine_mask
 		return []idx_val{{idx, mine_mask}}, errors.New("Bomb")

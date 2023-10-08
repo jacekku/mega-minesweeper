@@ -216,11 +216,14 @@ func TestMarkMines(t *testing.T) {
 }
 
 func TestMarkedCannotBeUncovered(t *testing.T) {
-	var fow = generate_fow(1, 1, [][]uint{})
+	var fow = generate_fow(1, 1, [][]uint{{0, 0}})
 	fow.mark(xy_i(0, 0, fow.board.width))
 	fow.uncover(xy_i(0, 0, fow.board.width))
-	if fow.fog[0]^uncovered_mask == 0 {
+	if fow.fog[0] == uncovered_mask {
 		t.Errorf("marked fields should not be uncovered")
+	}
+	if fow.fog[0] != marked_mask {
+		t.Errorf("marked fields should be marked")
 	}
 }
 
