@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/joho/godotenv"
 )
 
 var upgrader = websocket.Upgrader{
@@ -78,11 +80,33 @@ func updatePositions(clients []*websocket.Conn, idx uint) {
 }
 
 func main() {
+	err := godotenv.Load(".env")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	var width, err1 = strconv.ParseUint(os.Getenv("MS_WIDTH"), 10, 32)
+	if err1 != nil {
+		fmt.Println(err1)
+		return
+	}
+	var height, err2 = strconv.ParseUint(os.Getenv("MS_HEIGHT"), 10, 32)
+	if err2 != nil {
+		fmt.Println(err2)
+		return
+	}
+	var percentage, err3 = strconv.ParseFloat(os.Getenv("MS_PERCENTAGE"), 32)
+	if err3 != nil {
+		fmt.Println(err3)
+		return
+	}
+	var port = os.Getenv("MS_PORT")
+
 	var clients []*websocket.Conn = make([]*websocket.Conn, 0)
 
-	var brd = create_board(200, 200)
+	var brd = create_board(uint(width), uint(height))
 	fmt.Println("generated board")
-	for i := 0; i < int(float64(brd.height*brd.width)*0.1); i++ {
+	for i := 0; i < int(float64(brd.height*brd.width)*percentage); i++ {
 		brd.set_bomb(uint(rand.Intn(int(brd.width))), uint(rand.Intn(int(brd.height))))
 	}
 	fmt.Println("Place bombs")
@@ -174,8 +198,8 @@ func main() {
 		fmt.Println(r.Method)
 	})
 
-	fmt.Println("listening on port 8080")
-	http.ListenAndServe(":8080", nil)
+	fmt.Println("listening on port " + port)
+	http.ListenAndServe(":"+port, nil)
 }
 
 // func main() {
