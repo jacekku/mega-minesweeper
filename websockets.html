@@ -1,0 +1,142 @@
+<!-- websockets.html -->
+
+<input id="input" type="text" />
+<button onclick="send()">Send</button>
+<pre style="font-family: monospace" id="map"></pre>
+<div id="map_div"></div>
+<pre id="output"></pre>
+
+<style>
+  .field {
+    width: 20px;
+    height: 20px;
+    text-align: center;
+    vertical-align: middle;
+    /* border: 1px solid black; */
+  }
+  #map_div {
+    display: grid;
+    grid-template-columns: repeat(100, 20px);
+    grid-column-gap: 0px;
+    grid-row-gap: 0px;
+  }
+</style>
+<script>
+  var input = document.getElementById("input");
+  var output = document.getElementById("output");
+  var map = document.getElementById("map");
+  var mapDiv = document.getElementById("map_div");
+  var socket = new WebSocket("ws://localhost:8080/echo");
+
+  var MAP_ARR = new Uint8Array();
+
+  const mapMetadata = {
+    width: 0,
+    height: 0,
+  };
+
+  socket.binaryType = "arraybuffer";
+  socket.onopen = function () {
+    output.innerHTML += "Status: Connected\n";
+  };
+
+  function byteToString(byte) {
+    if (byte == 0) return " ";
+    if (byte == 35) return "#";
+    if (byte == 63) return "?";
+    if (byte == 128) return "!";
+    return byte;
+  }
+
+  function byteToStyle(byte) {
+    if (byte == 0) return "grey";
+    if (byte == 35) return "darkgreen";
+    if (byte == 63) return "blue";
+    if (byte == 128) return "red";
+    return "yellow";
+  }
+
+  socket.onmessage = async function (e) {
+    if (event.data[0] == "w") {
+      const data = event.data.split(":");
+      mapMetadata.width = Number(data[1]);
+      mapMetadata.height = Number(data[2]);
+      MAP_ARR = new Uint8Array(mapMetadata.width * mapMetadata.height);
+      mapDiv.innerHTML = "";
+      mapDiv.style.gridTemplateColumns = `repeat(${mapMetadata.width}, 20px)`;
+      const promises = Array.from({
+        length: mapMetadata.width * mapMetadata.height,
+      }).map((_, i) => {
+        return new Promise(() => {
+          const field = document.createElement("div");
+          field.classList.add("field");
+          field.style.backgroundColor = "darkgreen";
+          field.addEventListener("click", (ev) => {
+            sendUncover(ev.target.id);
+          });
+          field.addEventListener("contextmenu", (ev) => {
+            ev.preventDefault();
+            sendMark(ev.target.id);
+          });
+          mapDiv.appendChild(field);
+        });
+      });
+      mapDiv.childNodes.forEach((node, i) => {
+        node.id = i;
+      });
+    } else if (event.data instanceof ArrayBuffer) {
+      const view = new DataView(e.data);
+      // console.log(view.getUint8(0))
+      // console.log(view.byteLength)
+      if (view.getUint8(0) == 109) {
+        const arr = new Uint8Array(view.buffer.slice(1));
+        arr.forEach((v, i) => (MAP_ARR[i] = v));
+        redraw();
+      } else if (view.getInt8(0) == 117) {
+        const changes = new BigUint64Array(view.buffer.slice(1));
+        const toUpdate = [];
+        for (let i = 0; i < changes.length; i += 2) {
+          MAP_ARR[Number(changes[i])] = Number(changes[i + 1]);
+          toUpdate.push(Number(changes[i]));
+        }
+        redraw(toUpdate);
+      }
+    } else {
+      output.innerHTML += "Server: " + e.data + "\n";
+    }
+  };
+
+  function redraw(toUpdate) {
+    if (toUpdate) {
+      toUpdate.forEach(async (i) => {
+        mapDiv.children[i].innerHTML = byteToString(MAP_ARR[i]);
+        mapDiv.children[i].style.backgroundColor = byteToStyle(MAP_ARR[i]);
+      });
+      return;
+    }
+    let draw = "";
+    for (let i = 0; i < MAP_ARR.byteLength; i++) {
+      const byte = MAP_ARR[i];
+      if (i > 0 && i % mapMetadata.width == 0) draw += "\n";
+      draw += byteToString(byte);
+    }
+    mapDiv.childNodes.forEach(async (node) => {
+      node.innerHTML = byteToString(MAP_ARR[node.id]);
+      node.style.backgroundColor = byteToStyle(MAP_ARR[node.id]);
+    });
+    // map.innerHTML = draw;
+  }
+
+  function send() {
+    socket.send(input.value);
+    input.value = "";
+  }
+
+  function sendUncover(idx) {
+    socket.send("u" + idx);
+  }
+
+  function sendMark(idx) {
+    socket.send("m" + idx);
+  }
+</script>
