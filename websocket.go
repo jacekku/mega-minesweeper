@@ -199,7 +199,10 @@ func main() {
 	})
 
 	fmt.Println("listening on port " + port)
-	http.ListenAndServe(":"+port, nil)
+	var serveError = http.ListenAndServe(":"+port, nil)
+	if serveError != nil {
+		fmt.Println(serveError)
+	}
 }
 
 // func main() {
