@@ -131,7 +131,9 @@
     return "yellow";
   }
 
-  const socket = new WebSocket("ws://localhost:8080/echo");
+  const currentUrl = window.location;
+  console.log(currentUrl);
+  const socket = new WebSocket(`ws://${currentUrl.host}/echo`);
 
   socket.binaryType = "arraybuffer";
   socket.onopen = function () {};
