@@ -18,6 +18,10 @@
     top: 0;
     left: 0;
   }
+  body {
+    padding: 0;
+    margin: 0;
+  }
 </style>
 <script defer async>
   const FLAG = 63;
@@ -26,7 +30,7 @@
   const EMPTY = 0;
   const YOUR_PLAYER = 9999;
   const OTHER_PLAYERS = 8888;
-  const fieldSize = 30;
+  const fieldSize = 50;
   const IMAGES = [];
   {
     // prepare text images
@@ -68,8 +72,16 @@
       IMAGES[COVERED] = empty;
     }
   }
-
+  const detectDeviceType = () =>
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    )
+      ? "Mobile"
+      : "Desktop";
   const MOUSE = {
+    dragging: false,
+    touchLastX: 0,
+    touchLastY: 0,
     rawX: 0,
     rawY: 0,
     canvasX: 0,
@@ -77,12 +89,66 @@
     fieldX: 0,
     fieldY: 0,
   };
+  /**
+   *
+   * @typedef {Object} Frustum
+   * @property {number} x
+   * @property {number} y
+   * @property {number} width
+   * @property {number} height
+   * @property {number} fieldX
+   * @property {number} fieldY
+   * @property {number} fieldWidth
+   * @property {number} fieldHeight
+   */
+  const FRUSTUM = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    fieldX: 0,
+    fieldY: 0,
+    fieldWidth: 0,
+    fieldHeight: 0,
+  };
+
   const input = document.getElementById("input");
   const output = document.getElementById("output");
   const map_canvas = document.getElementById("map_canvas");
   const interaction_canvas = document.getElementById("interaction_canvas");
+
+  interaction_canvas.addEventListener("touchmove", (e) => {
+    const { clientX, clientY } = e.changedTouches[0];
+    if (MOUSE.touchLastX == null || MOUSE.canvasY == null) {
+      MOUSE.touchLastX = clientX;
+      MOUSE.touchLastY = clientY;
+    }
+
+    const moveX = clientX - MOUSE.touchLastX;
+    const moveY = clientY - MOUSE.touchLastY;
+    updateFrustum(moveX, moveY);
+    drawOriginalMap(FRUSTUM);
+
+    MOUSE.touchLastX = clientX;
+    MOUSE.touchLastY = clientY;
+  });
+
+  interaction_canvas.addEventListener("touchend", (e) => {
+    MOUSE.touchLastX = null;
+    MOUSE.touchLastY = null;
+  });
+
   interaction_canvas.addEventListener("mousemove", (e) => {
     e.preventDefault();
+    if (e.buttons > 0) {
+      MOUSE.dragging = true;
+      if (Math.abs(e.movementX) > 0 || Math.abs(e.movementY) > 0) {
+        updateFrustum(e.movementX, e.movementY);
+        drawOriginalMap(FRUSTUM);
+      }
+      return;
+    }
+    MOUSE.dragging = false;
     MOUSE.rawX = e.offsetX;
     MOUSE.rawY = e.offsetY;
     MOUSE.canvasX =
@@ -92,14 +158,26 @@
     MOUSE.fieldX = Math.round(MOUSE.canvasX / fieldSize);
     MOUSE.fieldY = Math.round(MOUSE.canvasY / fieldSize);
   });
-  interaction_canvas.addEventListener("click", (e) => {
+  interaction_canvas.addEventListener("mouseup", (e) => {
     e.preventDefault();
-    const idx = MOUSE.fieldX + mapMetadata.width * MOUSE.fieldY;
+    if (MOUSE.dragging) return;
+    // not left click
+    if (e.button > 0) return;
+
+    const idx =
+      MOUSE.fieldX +
+      FRUSTUM.fieldX +
+      mapMetadata.width * (MOUSE.fieldY + FRUSTUM.fieldY);
     sendUncover(idx);
   });
+
   interaction_canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    const idx = MOUSE.fieldX + mapMetadata.width * MOUSE.fieldY;
+    if (MOUSE.dragging) return;
+    const idx =
+      MOUSE.fieldX +
+      FRUSTUM.fieldX +
+      mapMetadata.width * (MOUSE.fieldY + FRUSTUM.fieldY);
     sendMark(idx);
   });
 
@@ -132,7 +210,6 @@
   }
 
   const currentUrl = window.location;
-  console.log(currentUrl);
   const socket = new WebSocket(`ws://${currentUrl.host}/echo`);
 
   socket.binaryType = "arraybuffer";
@@ -144,10 +221,13 @@
       mapMetadata.width = Number(data[1]);
       mapMetadata.height = Number(data[2]);
       const { width, height } = mapMetadata;
-      map_canvas.width = width * fieldSize;
-      map_canvas.height = height * fieldSize;
-      interaction_canvas.width = width * fieldSize;
-      interaction_canvas.height = height * fieldSize;
+      map_canvas.width = window.innerWidth;
+      map_canvas.height = window.innerHeight;
+      interaction_canvas.width = window.innerWidth;
+      interaction_canvas.height = window.innerHeight;
+
+      FRUSTUM.fieldWidth = Math.floor(window.innerWidth / fieldSize);
+      FRUSTUM.fieldHeight = Math.floor(window.innerHeight / fieldSize);
 
       MAP_ARR = new Uint8Array(width * height);
     } else if (event.data instanceof ArrayBuffer) {
@@ -155,7 +235,7 @@
       if (view.getUint8(0) == 109) {
         const arr = new Uint8Array(view.buffer.slice(1));
         arr.forEach((v, i) => (MAP_ARR[i] = v));
-        drawOriginalMap();
+        drawOriginalMap(FRUSTUM);
         interactionDraw();
       } else if (view.getInt8(0) == 117) {
         const changes = new BigUint64Array(view.buffer.slice(1));
@@ -176,10 +256,16 @@
     }
   };
 
-  function drawOriginalMap() {
-    for (let y = 0; y < mapMetadata.height; y++) {
-      for (let x = 0; x < mapMetadata.width; x++) {
-        const byte = MAP_ARR[x + mapMetadata.width * y];
+  /**
+   * @param {Frustum} frustum
+   */
+  function drawOriginalMap(frustum) {
+    const { fieldX, fieldY, fieldWidth, fieldHeight } = frustum;
+    for (let y = 0; y < fieldHeight; y++) {
+      for (let x = 0; x < fieldWidth; x++) {
+        const X = x + fieldX;
+        const Y = y + fieldY;
+        const byte = MAP_ARR[X + mapMetadata.width * Y];
         mapContext.fillStyle = byteToStyle(byte);
         mapContext.fillRect(x * fieldSize, y * fieldSize, fieldSize, fieldSize);
 
@@ -195,6 +281,15 @@
     }
   }
 
+  function updateFrustum(movementX, movementY) {
+    FRUSTUM.x = FRUSTUM.x - movementX;
+    FRUSTUM.y = FRUSTUM.y - movementY;
+    if (FRUSTUM.x <= 0) FRUSTUM.x = 0;
+    if (FRUSTUM.y <= 0) FRUSTUM.y = 0;
+    FRUSTUM.fieldX = Math.floor(FRUSTUM.x / fieldSize);
+    FRUSTUM.fieldY = Math.floor(FRUSTUM.y / fieldSize);
+  }
+
   /**
    * @param {number[]} toUpdate
 
@@ -202,8 +297,8 @@
   function redraw(toUpdate) {
     toUpdate.forEach((idx) => {
       const byte = MAP_ARR[idx];
-      const x = Math.floor(idx % mapMetadata.width);
-      const y = Math.floor(idx / mapMetadata.height);
+      const x = Math.floor(idx % mapMetadata.width) - FRUSTUM.fieldX;
+      const y = Math.floor(idx / mapMetadata.height) - FRUSTUM.fieldY;
       mapContext.fillStyle = byteToStyle(byte);
       mapContext.fillRect(x * fieldSize, y * fieldSize, fieldSize, fieldSize);
 
@@ -236,18 +331,7 @@
       fieldSize,
       fieldSize
     );
-    // if (!positions) return;
-    // positions.forEach((idx) => {
-    //   const x = Math.floor(idx % mapMetadata.width);
-    //   const y = Math.floor(idx / mapMetadata.height);
-    //   mapContext.drawImage(
-    //     IMAGES[OTHER_PLAYERS],
-    //     x * fieldSize,
-    //     y * fieldSize,
-    //     fieldSize,
-    //     fieldSize
-    //   );
-    // });
+
     requestAnimationFrame(interactionDraw);
   }
 
@@ -258,10 +342,4 @@
   function sendMark(idx) {
     socket.send("m" + idx);
   }
-  // periodically send your player cursor position to server
-  // const CURSOR_UPDATE_INTERVAL = 1000;
-  // setInterval(() => {
-  //   const idx = MOUSE.fieldX + MOUSE.fieldY * mapMetadata.width;
-  //   socket.send("p" + idx);
-  // }, CURSOR_UPDATE_INTERVAL);
 </script>
