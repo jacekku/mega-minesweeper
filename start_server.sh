@@ -1,0 +1,1 @@
+nohup /services/megasweeper/websockets </dev/null >/dev/null 2>&1 &

@@ -4,6 +4,7 @@
 <img src="assets/bomb.png" hidden />
 <img src="assets/you.png" hidden />
 <img src="assets/other.png" hidden />
+<p id="connection_status"></p>
 <div id="map">
   <canvas id="map_canvas"></canvas>
   <canvas id="interaction_canvas"></canvas>
@@ -210,52 +211,75 @@
   }
 
   const currentUrl = window.location;
-  const socket = new WebSocket(`ws://${currentUrl.host}/echo`);
 
-  socket.binaryType = "arraybuffer";
-  socket.onopen = function () {};
-
-  socket.onmessage = async function (event) {
-    if (event.data[0] == "w") {
-      const data = event.data.split(":");
-      mapMetadata.width = Number(data[1]);
-      mapMetadata.height = Number(data[2]);
-      const { width, height } = mapMetadata;
-      map_canvas.width = window.innerWidth;
-      map_canvas.height = window.innerHeight;
-      interaction_canvas.width = window.innerWidth;
-      interaction_canvas.height = window.innerHeight;
-
-      FRUSTUM.fieldWidth = Math.floor(window.innerWidth / fieldSize);
-      FRUSTUM.fieldHeight = Math.floor(window.innerHeight / fieldSize);
-
-      MAP_ARR = new Uint8Array(width * height);
-    } else if (event.data instanceof ArrayBuffer) {
-      const view = new DataView(event.data);
-      if (view.getUint8(0) == 109) {
-        const arr = new Uint8Array(view.buffer.slice(1));
-        arr.forEach((v, i) => (MAP_ARR[i] = v));
-        drawOriginalMap(FRUSTUM);
-        interactionDraw();
-      } else if (view.getInt8(0) == 117) {
-        const changes = new BigUint64Array(view.buffer.slice(1));
-        const toUpdate = [];
-        for (let i = 0; i < changes.length; i += 2) {
-          MAP_ARR[Number(changes[i])] = Number(changes[i + 1]);
-          toUpdate.push(Number(changes[i]));
-        }
-        redraw(toUpdate);
-      }
-      // else if (view.getUint8(0) == 112) {
-      //   const newPositions = new BigUint64Array(view.buffer.slice(1));
-
-      //   interactionDraw(Array.from(newPositions, (i) => Number(i)));
-      // }
-    } else {
-      output.innerHTML += "Server: " + e.data + "\n";
+  let socket;
+  let attempts = 0;
+  const interval = setInterval(function connector() {
+    if (attempts > 60) {
+      connection_status.innerHTML = "Could not connect to server";
+      clearInterval(interval);
+      return;
     }
-  };
+    connection_status.innerHTML = `Attempting to connect... (${attempts++})`;
+    socket = new WebSocket(
+      `${currentUrl.protocol.includes("https") ? "wss" : "ws"}://${
+        currentUrl.host
+      }/echo`
+    );
+    if (socket) {
+      socket.onopen = function () {
+        connection_status.hidden = true;
+        socketOpened(socket);
+        clearInterval(interval);
+      };
+    }
+  }, 1000);
 
+  function socketOpened(socket) {
+    socket.binaryType = "arraybuffer";
+    socket.onopen = function () {};
+
+    socket.onmessage = async function (event) {
+      if (event.data[0] == "w") {
+        const data = event.data.split(":");
+        mapMetadata.width = Number(data[1]);
+        mapMetadata.height = Number(data[2]);
+        const { width, height } = mapMetadata;
+        map_canvas.width = window.innerWidth;
+        map_canvas.height = window.innerHeight;
+        interaction_canvas.width = window.innerWidth;
+        interaction_canvas.height = window.innerHeight;
+
+        FRUSTUM.fieldWidth = Math.floor(window.innerWidth / fieldSize);
+        FRUSTUM.fieldHeight = Math.floor(window.innerHeight / fieldSize);
+
+        MAP_ARR = new Uint8Array(width * height);
+      } else if (event.data instanceof ArrayBuffer) {
+        const view = new DataView(event.data);
+        if (view.getUint8(0) == 109) {
+          const arr = new Uint8Array(view.buffer.slice(1));
+          arr.forEach((v, i) => (MAP_ARR[i] = v));
+          drawOriginalMap(FRUSTUM);
+          interactionDraw();
+        } else if (view.getInt8(0) == 117) {
+          const changes = new BigUint64Array(view.buffer.slice(1));
+          const toUpdate = [];
+          for (let i = 0; i < changes.length; i += 2) {
+            MAP_ARR[Number(changes[i])] = Number(changes[i + 1]);
+            toUpdate.push(Number(changes[i]));
+          }
+          redraw(toUpdate);
+        }
+        // else if (view.getUint8(0) == 112) {
+        //   const newPositions = new BigUint64Array(view.buffer.slice(1));
+
+        //   interactionDraw(Array.from(newPositions, (i) => Number(i)));
+        // }
+      } else {
+        output.innerHTML += "Server: " + e.data + "\n";
+      }
+    };
+  }
   /**
    * @param {Frustum} frustum
    */
@@ -291,9 +315,9 @@
   }
 
   /**
-   * @param {number[]} toUpdate
+     * @param {number[]} toUpdate
 
-   */
+     */
   function redraw(toUpdate) {
     toUpdate.forEach((idx) => {
       const byte = MAP_ARR[idx];
