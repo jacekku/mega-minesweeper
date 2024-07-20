@@ -26,25 +26,18 @@ func update_board(clients *[]*websocket.Conn, fields chan []idx_val) {
 	for {
 		select {
 		case vals := <-fields:
-			// start := time.Now()
 			var msg []byte = make([]byte, 0)
 			msg = append(msg, uncover_header)
 			for _, i_v := range vals {
 				msg = binary.LittleEndian.AppendUint64(msg, uint64(i_v.idx))
 				msg = binary.LittleEndian.AppendUint64(msg, uint64(i_v.val))
 			}
-			// fmt.Println(msg)
-			// fmt.Println(len(*clients))
-			// fmt.Println(time.Since(start), "create")
 			broadcast(*clients, websocket.BinaryMessage, msg)
-			// fmt.Println(time.Since(start), "create and broadcast")
-			// fmt.Println(time.Since(whole_request), "whole request")
 		}
 	}
 }
 
 func broadcast(clients []*websocket.Conn, msgType int, msg []byte) {
-	// start := time.Now()
 	for idx := len(clients) - 1; idx >= 0; idx-- {
 		c := clients[idx]
 		if err := c.WriteMessage(msgType, msg); err != nil {
@@ -55,7 +48,6 @@ func broadcast(clients []*websocket.Conn, msgType int, msg []byte) {
 			continue
 		}
 	}
-	// fmt.Println(time.Since(start), "broadcast")
 }
 
 func uncoverWithChannel(idx uint, fow *fog_of_war, updated_fields chan []idx_val) {
@@ -180,7 +172,6 @@ func main() {
 				}
 				updatePositions(clients, uint(idx))
 			}
-			// fmt.Println(time.Since(start), "handle client command")
 		}
 	})
 
@@ -205,26 +196,3 @@ func main() {
 		fmt.Println(serveError)
 	}
 }
-
-// func main() {
-// 	var brd = create_board(4, 4)
-// 	for i := 0; i < 3; i++ {
-// 		brd.set_bomb(uint(rand.Intn(int(brd.width))), uint(rand.Intn(int(brd.height))))
-// 	}
-// 	brd.calculate_foo()
-// 	var fow = create_fow(brd)
-// 	for _, row := range fow.pretty_print() {
-// 		fmt.Println(row)
-// 	}
-
-// var i, j uint
-// for {
-// 	fmt.Print("Type two numbers: ")
-// 	fmt.Scan(&i, &j)
-// 	fmt.Println("Your numbers are:", i, "and", j)
-// 	fmt.Println(fow.uncover(i, j))
-// 	for _, row := range fow.pretty_print() {
-// 		fmt.Println(row)
-// 	}
-// }
-// }
