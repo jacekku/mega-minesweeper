@@ -127,9 +127,6 @@ func main() {
 		if err = client.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 			return
 		}
-		// if err = client.WriteMessage(websocket.BinaryMessage, []byte{0xffff}); err != nil {
-		// return
-		// }
 		clients = append(clients, client)
 		for {
 			// Read message from browser
@@ -139,11 +136,8 @@ func main() {
 			}
 
 			// Print the message to the console
-			// fmt.Printf("%s sent: %s\n", client.RemoteAddr(), string(msg))
 
 			// Write message back to browser
-			// whole_request = time.Now()
-			// start := time.Now()
 			if msg[0] == 'u' {
 				// uncover
 				var s_idx = string(msg[1:])
