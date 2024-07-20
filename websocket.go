@@ -190,6 +190,7 @@ func main() {
 		http.ServeFile(w, r, "./assets/"+fileName)
 	})
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("serving websockets.html")
 		http.ServeFile(w, r, "websockets.html")
 	})
 
